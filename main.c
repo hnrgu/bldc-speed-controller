@@ -112,6 +112,8 @@ static void step5() {
 }
 
 static void set_duty_cycle(uint16_t val) {
+	val /= 32;
+
 	TIM1->CCR1 = val;
 	TIM1->CCR2 = val;
 	TIM1->CCR3 = val;
@@ -153,6 +155,7 @@ static void setup() {
 	GPIOE->AFR[1] = GPIO_AFRH_AFSEL8_0 | GPIO_AFRH_AFSEL9_0 | GPIO_AFRH_AFSEL10_0 | GPIO_AFRH_AFSEL11_0 | GPIO_AFRH_AFSEL12_0 | GPIO_AFRH_AFSEL13_0;
 
 	TIM1->BDTR = TIM_BDTR_MOE | TIM_BDTR_OSSR;
+	TIM1->ARR = 2047;
 	TIM1->CR1 = TIM_CR1_CEN;
 	TIM1->CR2 = TIM_CR2_CCPC;
 
