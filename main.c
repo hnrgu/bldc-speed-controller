@@ -6,6 +6,7 @@
 // PE10 / TIM1_CH2N / phase V low-side
 // PE13 / TIM1_CH3  / phase W high-side
 // PE12 / TIM1_CH3N / phase W low-side
+// PA6  / TIM3_CH1  / pwm input
 
 // to drive channel high (pwm high side, !pwm low side) set OCxM to 0b0110 (pwm mode 1), CCxP to 0, CCxNP to 0
 // to drive channel low (off high side, on low side) set OCxM to 0b0100 (forced low), CCxP to 0, CCxNP to 0
@@ -127,9 +128,26 @@ static void step_forward() {
 	}
 }
 
+void TIM3_IRQHandler() {
+	uint16_t width = TIM3->CCR2;
+
+	if (width < 500) return;
+	if (width > 3000) return;
+
+	if (width < 1000) width = 1000;
+	if (width > 2000) width = 2000;
+
+	set_duty_cycle((width - 1000) * 65);
+}
+
 static void setup() {
-	RCC->AHB4ENR = RCC_AHB4ENR_GPIOEEN;
+	RCC->AHB4ENR = RCC_AHB4ENR_GPIOAEN | RCC_AHB4ENR_GPIOEEN;
 	RCC->APB2ENR = RCC_APB2ENR_TIM1EN;
+	RCC->APB1LENR = RCC_APB1LENR_TIM3EN;
+
+	GPIOA->MODER = ~(GPIO_MODER_MODE15_0 | GPIO_MODER_MODE14_0 | GPIO_MODER_MODE13_0 | GPIO_MODER_MODE6_0);
+	GPIOA->PUPDR = GPIO_PUPDR_PUPD15_0 | GPIO_PUPDR_PUPD14_1 | GPIO_PUPDR_PUPD13_0 | GPIO_PUPDR_PUPD6_1;
+	GPIOA->AFR[0] = GPIO_AFRL_AFSEL6_1;
 
 	GPIOE->MODER = ~(GPIO_MODER_MODE8_0 | GPIO_MODER_MODE9_0 | GPIO_MODER_MODE10_0 | GPIO_MODER_MODE11_0 | GPIO_MODER_MODE12_0 | GPIO_MODER_MODE13_0);
 	GPIOE->AFR[1] = GPIO_AFRH_AFSEL8_0 | GPIO_AFRH_AFSEL9_0 | GPIO_AFRH_AFSEL10_0 | GPIO_AFRH_AFSEL11_0 | GPIO_AFRH_AFSEL12_0 | GPIO_AFRH_AFSEL13_0;
@@ -138,12 +156,21 @@ static void setup() {
 	TIM1->CR1 = TIM_CR1_CEN;
 	TIM1->CR2 = TIM_CR2_CCPC;
 
+	TIM3->PSC = 63;
+	TIM3->CR1 = TIM_CR1_OPM;
+	TIM3->CCMR1 = TIM_CCMR1_CC2S_1 | TIM_CCMR1_CC1S_0;
+	TIM3->CCER = TIM_CCER_CC2P | TIM_CCER_CC2E;
+	TIM3->SMCR = TIM_SMCR_SMS_3 | TIM_SMCR_TS_2 | TIM_SMCR_TS_0;
+	TIM3->DIER = TIM_DIER_CC2IE;
+
+	NVIC_EnableIRQ(TIM3_IRQn);
+
 	stop();
+	set_duty_cycle(0);
 }
 
 int main() {
 	setup();
-	set_duty_cycle(50000);
 
 	// Setup LEDs and button for testing
 	RCC->AHB4ENR |= RCC_AHB4ENR_GPIOBEN | RCC_AHB4ENR_GPIOCEN;
