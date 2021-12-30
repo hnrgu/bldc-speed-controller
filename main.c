@@ -51,15 +51,13 @@
 #define _SET(REG, U, V, W) TIM1->REG = REG##_PHASE_U_##U | REG##_PHASE_V_##V | REG##_PHASE_W_##W
 #define SET(U, V, W) _SET(CCMR1, U, V, W); _SET(CCMR2, U, V, W); _SET(CCER, U, V, W); TIM1->EGR = TIM_EGR_COMG;
 
-static int step = 0;
+static int current_step = 0;
 
 static void stop() {
 	SET(FLOAT, FLOAT, FLOAT);
 }
 
 static void step0() {
-	step = 0;
-
 	// phaseU low
 	// phaseV high
 	// phaseW floating
@@ -67,8 +65,6 @@ static void step0() {
 }
 
 static void step1() {
-	step = 1;
-
 	// phaseU floating
 	// phaseV high
 	// phaseW low
@@ -76,8 +72,6 @@ static void step1() {
 }
 
 static void step2() {
-	step = 2;
-
 	// phaseU high
 	// phaseV floating
 	// phaseW low
@@ -85,8 +79,6 @@ static void step2() {
 }
 
 static void step3() {
-	step = 3;
-
 	// phaseU high
 	// phaseV low
 	// phaseW floating
@@ -94,8 +86,6 @@ static void step3() {
 }
 
 static void step4() {
-	step = 4;
-
 	// phaseU floating
 	// phaseV low
 	// phaseW high
@@ -103,31 +93,36 @@ static void step4() {
 }
 
 static void step5() {
-	step = 5;
-
 	// phaseU low
 	// phaseV floating
 	// phaseW high
 	SET(LOW, FLOAT, HIGH);
 }
 
+static void step() {
+	switch (current_step) {
+		case 0: step0(); break;
+		case 1: step1(); break;
+		case 2: step2(); break;
+		case 3: step3(); break;
+		case 4: step4(); break;
+		case 5: step5(); break;
+	}
+}
+
 static void set_duty_cycle(uint16_t val) {
+	if (val < 5000) {
+		stop();
+		val = 0;
+	} else {
+		step();
+	}
+
 	val /= 32;
 
 	TIM1->CCR1 = val;
 	TIM1->CCR2 = val;
 	TIM1->CCR3 = val;
-}
-
-static void step_forward() {
-	switch (step) {
-		case 0: step1(); break;
-		case 1: step2(); break;
-		case 2: step3(); break;
-		case 3: step4(); break;
-		case 4: step5(); break;
-		case 5: step0(); break;
-	}
 }
 
 void TIM3_IRQHandler() {
@@ -168,7 +163,6 @@ static void setup() {
 
 	NVIC_EnableIRQ(TIM3_IRQn);
 
-	stop();
 	set_duty_cycle(0);
 }
 
@@ -188,21 +182,24 @@ int main() {
 		for (volatile int i = 0; i < 100000; i ++);
 		while (!(GPIOC->IDR & GPIO_IDR_ID13));
 
-		step_forward();
+		current_step ++;
+		if (current_step > 5) current_step = 0;
 
-		if (step & 1) {
+		step();
+
+		if (current_step & 1) {
 			GPIOB->BSRR = GPIO_BSRR_BS14;
 		} else {
 			GPIOB->BSRR = GPIO_BSRR_BR14;
 		}
 
-		if (step & 2) {
+		if (current_step & 2) {
 			GPIOE->BSRR = GPIO_BSRR_BS1;
 		} else {
 			GPIOE->BSRR = GPIO_BSRR_BR1;
 		}
 
-		if (step & 4) {
+		if (current_step & 4) {
 			GPIOB->BSRR = GPIO_BSRR_BS0;
 		} else {
 			GPIOB->BSRR = GPIO_BSRR_BR0;
