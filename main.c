@@ -54,6 +54,9 @@
 static int current_step = 0;
 
 static void stop() {
+	TIM4->CR1 = 0;
+	TIM4->SR = 0;
+
 	SET(FLOAT, FLOAT, FLOAT);
 }
 
@@ -100,6 +103,8 @@ static void step5() {
 }
 
 static void step() {
+	TIM4->CR1 = TIM_CR1_CEN | TIM_CR1_OPM;
+
 	switch (current_step) {
 		case 0: step0(); break;
 		case 1: step1(); break;
@@ -108,6 +113,14 @@ static void step() {
 		case 4: step4(); break;
 		case 5: step5(); break;
 	}
+}
+
+static void next_step() {
+	current_step ++;
+	if (current_step > 5) current_step = 0;
+
+	TIM4->CNT = 0;
+	step();
 }
 
 static void set_duty_cycle(uint16_t val) {
@@ -137,10 +150,15 @@ void TIM3_IRQHandler() {
 	set_duty_cycle((width - 1000) * 65);
 }
 
+void TIM4_IRQHandler() {
+	TIM4->SR = 0;
+	next_step();
+}
+
 static void setup() {
 	RCC->AHB4ENR = RCC_AHB4ENR_GPIOAEN | RCC_AHB4ENR_GPIOEEN;
 	RCC->APB2ENR = RCC_APB2ENR_TIM1EN;
-	RCC->APB1LENR = RCC_APB1LENR_TIM3EN;
+	RCC->APB1LENR = RCC_APB1LENR_TIM3EN | RCC_APB1LENR_TIM4EN;
 
 	GPIOA->MODER = ~(GPIO_MODER_MODE15_0 | GPIO_MODER_MODE14_0 | GPIO_MODER_MODE13_0 | GPIO_MODER_MODE6_0);
 	GPIOA->PUPDR = GPIO_PUPDR_PUPD15_0 | GPIO_PUPDR_PUPD14_1 | GPIO_PUPDR_PUPD13_0 | GPIO_PUPDR_PUPD6_1;
@@ -161,7 +179,12 @@ static void setup() {
 	TIM3->SMCR = TIM_SMCR_SMS_3 | TIM_SMCR_TS_2 | TIM_SMCR_TS_0;
 	TIM3->DIER = TIM_DIER_CC2IE;
 
+	TIM4->PSC = 63;
+	TIM4->ARR = 5000;
+	TIM4->DIER = TIM_DIER_UIE;
+
 	NVIC_EnableIRQ(TIM3_IRQn);
+	NVIC_EnableIRQ(TIM4_IRQn);
 
 	set_duty_cycle(0);
 }
@@ -176,16 +199,15 @@ int main() {
 	MODIFY_REG(GPIOB->MODER, GPIO_MODER_MODE0_Msk | GPIO_MODER_MODE14_Msk, GPIO_MODER_MODE0_0 | GPIO_MODER_MODE14_0);
 	MODIFY_REG(GPIOE->MODER, GPIO_MODER_MODE1_Msk, GPIO_MODER_MODE1_0);
 
+	for (volatile int i = 0; i < 100000; i ++);
+	while ((GPIOC->IDR & GPIO_IDR_ID13));
+	for (volatile int i = 0; i < 100000; i ++);
+	while (!(GPIOC->IDR & GPIO_IDR_ID13));
+
+	set_duty_cycle(5000);
+
 	while (1) {
-		for (volatile int i = 0; i < 100000; i ++);
-		while ((GPIOC->IDR & GPIO_IDR_ID13));
-		for (volatile int i = 0; i < 100000; i ++);
-		while (!(GPIOC->IDR & GPIO_IDR_ID13));
-
-		current_step ++;
-		if (current_step > 5) current_step = 0;
-
-		step();
+		asm("wfi");
 
 		if (current_step & 1) {
 			GPIOB->BSRR = GPIO_BSRR_BS14;
